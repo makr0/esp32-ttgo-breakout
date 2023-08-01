@@ -88,18 +88,36 @@ tile tiles[] = {
     {72, 53, tile_width, tile_height, TFT_ORANGE},
     {97, 53, tile_width, tile_height, TFT_ORANGE},
     {47, 61, tile_width, tile_height, TFT_SKYBLUE},
-    {72, 61, tile_width, tile_height, TFT_SKYBLUE}};
+    {72, 61, tile_width, tile_height, TFT_SKYBLUE},
+    {8, 77, tile_width, tile_height, TFT_RED},
+    {33, 77, tile_width, tile_height, TFT_RED},
+    {58, 77, tile_width, tile_height, TFT_RED},
+    {83, 77, tile_width, tile_height, TFT_RED},
+    {108, 77, tile_width, tile_height, TFT_RED},
+    {8, 85, tile_width, tile_height, TFT_GREEN},
+    {33, 85, tile_width, tile_height, TFT_GREEN},
+    {58, 85, tile_width, tile_height, TFT_GREEN},
+    {83, 85, tile_width, tile_height, TFT_GREEN},
+    {108, 85, tile_width, tile_height, TFT_GREEN},
+    {22, 95, tile_width, tile_height, TFT_ORANGE},
+    {47, 95, tile_width, tile_height, TFT_ORANGE},
+    {72, 95, tile_width, tile_height, TFT_ORANGE},
+    {97, 95, tile_width, tile_height, TFT_ORANGE},
+    {47, 101, tile_width, tile_height, TFT_SKYBLUE},
+    {72, 101, tile_width, tile_height, TFT_SKYBLUE}
+};
 
 int gameSpeed = 15000;
 uint score = 0;
 uint level = 1;
-
+uint splash_screen_number = 0;
+uint cheatmode = 0;
 enum game_state
 {
   splash,
   play,
   over
-} game_state = splash;
+} game_state;
 
 void setup()
 {
@@ -123,20 +141,36 @@ void setup()
   tft.setRotation(0);
   tft.setSwapBytes(true);
   tft.setTextColor(text_color, background_color);
-  // Show splash screen
-  auto image_data = z_image_decode(&image_splash);
-  tft.pushImage(0, 0, image_splash.width, image_splash.height, image_data);
-  delete[] image_data;
+  game_state = splash;
+  // set game to cheat mode if both buttons are pressed on boot
+  if (!digitalRead(GPIO_BUTTON_BOTTOM) && !digitalRead(GPIO_BUTTON_TOP)) {
+    cheatmode = 1;
+    gameSpeed = 3000;
+  }
+
 }
 
 void setup_level()
 {
-  ball = point{random_x(), 75};
+  ball = point{random_x(), 102};
+  ball_prev = ball;
   ball_speed.y = 1;
+  uint tiles_checked = 0;
   for (auto &tile : tiles)
   {
-    tile.visible = true;
-    tft.fillRect(tile.x, tile.y, tile.cx, tile.cy, tile.color);
+    tiles_checked++;
+    tile.visible = false;
+    if( tiles_checked < 16 ) {
+      tile.visible = true;
+    }
+    if( tiles_checked > 16 && level >= 3 ) {
+      tile.visible = true;
+    }
+
+    if(tile.visible) {
+      tft.fillRect(tile.x, tile.y, tile.cx, tile.cy, tile.color);
+    }
+
   }
 }
 
@@ -144,8 +178,9 @@ void next_level()
 {
   level++;
   gameSpeed -= 500;
-  delay(3000);
-  tft.drawString("LVL " + String(level), 99, 0, font_16pt);
+  if(gameSpeed < 0) gameSpeed = 0;
+  delay(2000);
+  tft.drawString("LVL " + String(level)+ " ", 99 - floor(level / 10)*4 , 0, font_16pt);
   setup_level();
 }
 
@@ -162,7 +197,25 @@ void game_wait()
     tft.drawString("Score " + String(score), 0, 0, font_16pt);
     setup_level();
     game_state = play;
+    return;
   }
+  int switch_image = 0;
+  unsigned short* image_data;
+  // cycle through splash screens
+  switch (splash_screen_number) {
+    case 0: image_data = z_image_decode(&splash_1); switch_image = 1; break;
+    case 20: image_data = z_image_decode(&splash_2); switch_image = 1; break;
+    case 40: image_data = z_image_decode(&splash_3); switch_image = 1; break;
+    case 60: image_data = z_image_decode(&splash_4); switch_image = 1; break;
+  }
+  if(switch_image) {
+    tft.pushImage(0, 0, splash_1.width, splash_1.height, image_data);
+    delete[] image_data;
+  }
+  
+  delay(200);
+  splash_screen_number++;
+  if(splash_screen_number == 80 ) splash_screen_number = 0;
 }
 
 void game_play()
@@ -181,11 +234,27 @@ void game_play()
     paddle_prev_x = paddle_x;
   }
 
-  if (paddle_x >= 4 && !digitalRead(GPIO_BUTTON_BOTTOM))
-    paddle_x -= 2;
+  bool btn_bottom_pressed = !digitalRead(GPIO_BUTTON_BOTTOM);
+  bool btn_top_pressed = !digitalRead(GPIO_BUTTON_TOP);
 
-  if (paddle_x <= 107 && !digitalRead(GPIO_BUTTON_TOP))
-    paddle_x += 2;
+
+  // move paddle in ball direction if in cheat mode
+  // or both buttons pressed
+  if(cheatmode || (btn_top_pressed && btn_bottom_pressed))  {
+    int posdiff = (paddle_x+paddle_width/2)-ball.x;
+    if( posdiff > 1) {
+      paddle_x--;
+    }
+    if( posdiff < 1) {
+      paddle_x++;
+    }
+  } else {
+    if (paddle_x >= 4 && btn_bottom_pressed)
+      paddle_x -= 2;
+
+    if (paddle_x <= 107 && btn_top_pressed)
+      paddle_x += 2;
+  }
 
   for (auto &tile : tiles)
   {
@@ -203,7 +272,7 @@ void game_play()
 
   // Check if ball went through the bottom
   if (ball.y > 240)
-    game_state = game_state::over;
+    game_state = over;
 
   // Bounce on paddle
   if (ball.y > 232 && ball.x > paddle_x && ball.x < paddle_x + paddle_width)
@@ -240,7 +309,7 @@ void game_over()
   tft.drawCentreString("GAME OVER", tft.width() / 2, 103 / 2, font_16pt);
   tft.drawCentreString("Score: " + String(score), tft.width() / 2, 123, font_26pt);
   tft.drawCentreString("Level: " + String(level), tft.width() / 2, 153, font_26pt);
-  delay(10000);
+  delay(5000);
   ESP.restart();
 }
 
