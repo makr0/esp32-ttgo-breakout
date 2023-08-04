@@ -248,13 +248,13 @@ void game_play()
     if( posdiff < 1) {
       paddle_x++;
     }
-  } else {
-    if (paddle_x >= 4 && btn_bottom_pressed)
-      paddle_x -= 2;
-
-    if (paddle_x <= 107 && btn_top_pressed)
-      paddle_x += 2;
   }
+  if (paddle_x >= 4 && btn_bottom_pressed)
+    paddle_x -= 2;
+
+  if (paddle_x <= 107 && btn_top_pressed)
+    paddle_x += 2;
+  
 
   for (auto &tile : tiles)
   {
